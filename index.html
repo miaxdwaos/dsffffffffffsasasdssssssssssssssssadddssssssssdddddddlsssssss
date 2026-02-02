@@ -2,26 +2,27 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>Slender P2P - Global Progress</title>
+    <title>Slender P2P - Fix Connection</title>
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <style>
         body { margin: 0; background: #000; color: white; font-family: 'Courier New', monospace; overflow: hidden; }
         canvas { display: block; background: #050505; }
         #ui { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; background: rgba(0,0,0,0.95); padding: 30px; border: 2px solid #440000; min-width: 320px; z-index: 100; }
         .menu-btn { padding: 12px 24px; margin: 10px; cursor: pointer; background: #600; color: white; border: none; font-weight: bold; }
+        .menu-btn:hover { background: #900; }
         #lobby-list { text-align: left; margin: 20px 0; border: 1px solid #333; padding: 10px; background: #111; }
-        input { padding: 10px; background: #111; border: 1px solid #444; color: white; width: 80%; }
+        input { padding: 12px; background: #111; border: 1px solid #444; color: white; width: 85%; margin-bottom: 10px; font-family: monospace; }
         #hud { position: absolute; top: 20px; left: 20px; font-size: 22px; display: none; text-shadow: 2px 2px #000; }
         #msg-overlay { position: absolute; top: 40%; width: 100%; text-align: center; font-size: 40px; color: red; display: none; font-weight: bold; pointer-events: none; }
     </style>
 </head>
 <body>
 
-    <div id="hud">NOTAS COLECTADAS: <span id="pageCount">0</span> / 8</div>
+    <div id="hud">NOTAS: <span id="pageCount">0</span> / 8</div>
     <div id="msg-overlay"></div>
 
     <div id="ui">
-        <h1 id="title">SLENDER P2P</h1>
+        <h1>SLENDER P2P</h1>
         
         <div id="main-menu">
             <button class="menu-btn" onclick="startSolo()">SOLITARIO</button><br>
@@ -30,17 +31,20 @@
         </div>
 
         <div id="join-section" style="display:none;">
-            <input type="text" id="peer-id-input" placeholder="Pegar ID del Host">
+            <h3>UNIRSE A PARTIDA</h3>
+            <input type="text" id="peer-id-input" placeholder="Pega la ID del Host aquí">
             <br>
-            <button class="menu-btn" onclick="initMultiplayer(false)">CONECTAR</button>
+            <button class="menu-btn" onclick="initMultiplayer(false)">CONECTAR AHORA</button>
+            <br>
+            <button style="background:none; border:none; color:gray; cursor:pointer;" onclick="location.reload()">← Volver</button>
         </div>
 
         <div id="lobby" style="display:none;">
-            <h3>LOBBY</h3>
-            <p id="display-id-p">ID: <b id="display-id" style="color:red">...</b></p>
+            <h3 id="lobby-status">CONECTANDO...</h3>
+            <p id="display-id-p">ID de tu sala: <br><b id="display-id" style="color:red; font-size: 1.2em;">...</b></p>
             <div id="lobby-list"></div>
             <button id="start-btn" class="menu-btn" style="display:none;" onclick="broadcastStart()">INICIAR PARTIDA</button>
-            <p id="wait-msg" style="display:none;">Esperando al host...</p>
+            <p id="wait-msg" style="display:none; color: orange;">Esperando que el Host inicie el juego...</p>
         </div>
     </div>
 
@@ -53,8 +57,7 @@
         canvas.height = window.innerHeight;
 
         const GameContentSlender = {
-            PersonSpriteheh: new Image(),
-            SlenderColor: "black"
+            PersonSpriteheh: new Image()
         };
         GameContentSlender.PersonSpriteheh.src = "PersonSpriteheh.jpg";
 
@@ -66,21 +69,36 @@
         let gameRunning = false;
         let isHost = false;
 
-        // --- Red P2P ---
         let peer, conn;
+
+        // Muestra el input para unirse
+        function showJoinInput() {
+            document.getElementById('main-menu').style.display = 'none';
+            document.getElementById('join-section').style.display = 'block';
+        }
 
         function initMultiplayer(asHost) {
             isHost = asHost;
             peer = new Peer();
+            
+            // UI Switch
             document.getElementById('main-menu').style.display = 'none';
             document.getElementById('join-section').style.display = 'none';
             document.getElementById('lobby').style.display = 'block';
 
             peer.on('open', (id) => {
                 document.getElementById('display-id').innerText = id;
-                addLobbyUser("Tú");
+                document.getElementById('lobby-status').innerText = "SALA ABIERTA";
+                addLobbyUser("Tú (Conectado)");
+                
                 if (!isHost) {
-                    conn = peer.connect(document.getElementById('peer-id-input').value);
+                    const hostId = document.getElementById('peer-id-input').value.trim();
+                    if(!hostId) {
+                        alert("¡Debes pegar una ID!");
+                        location.reload();
+                        return;
+                    }
+                    conn = peer.connect(hostId);
                     setupConnection();
                 }
             });
@@ -90,12 +108,25 @@
                 setupConnection();
                 if (isHost) {
                     document.getElementById('start-btn').style.display = 'inline-block';
-                    addLobbyUser("Invitado conectado");
+                    addLobbyUser("Invitado unido");
                 }
+            });
+
+            peer.on('error', (err) => {
+                alert("Error de conexión: " + err.type);
+                location.reload();
             });
         }
 
         function setupConnection() {
+            conn.on('open', () => {
+                console.log("Conexión establecida");
+                if(!isHost) {
+                    document.getElementById('wait-msg').style.display = 'block';
+                    document.getElementById('lobby-status').innerText = "CONECTADO AL HOST";
+                }
+            });
+
             conn.on('data', (data) => {
                 if (data.type === 'START') startGame();
                 if (data.type === 'SYNC') {
@@ -110,23 +141,23 @@
                     updateGlobalNotes();
                 }
             });
-            if (!isHost) document.getElementById('wait-msg').style.display = 'block';
         }
 
         function addLobbyUser(txt) {
-            document.getElementById('lobby-list').innerHTML += `<div>• ${txt}</div>`;
+            const list = document.getElementById('lobby-list');
+            list.innerHTML += `<div>• ${txt}</div>`;
         }
 
         function broadcastStart() {
-            if (conn) conn.send({ type: 'START' });
-            startGame();
+            if (conn && conn.open) {
+                conn.send({ type: 'START' });
+                startGame();
+            } else {
+                alert("Esperando a que se una alguien...");
+            }
         }
 
-        // --- Juego ---
-        function startSolo() { 
-            isHost = true; 
-            startGame(); 
-        }
+        function startSolo() { isHost = true; startGame(); }
 
         function startGame() {
             document.getElementById('ui').style.display = 'none';
@@ -140,14 +171,10 @@
             collectedPages = 0;
             player.dead = false;
             player.angle = 0;
-            player.x = 400; player.y = 400;
             pages = [];
-            // Solo el host genera las posiciones para que sean iguales
-            if(isHost) {
-                for(let i=0; i<8; i++) {
-                    pages.push({ x: Math.random()*(canvas.width-100)+50, y: Math.random()*(canvas.height-100)+50, collected: false });
-                }
-                if(conn) conn.send({ type: 'SYNC_PAGES', data: pages });
+            // Generar notas (solo host manda posiciones)
+            for(let i=0; i<8; i++) {
+                pages.push({ x: Math.random()*(canvas.width-100)+50, y: Math.random()*(canvas.height-100)+50, collected: false });
             }
         }
 
@@ -163,25 +190,23 @@
             if (keys['a'] || keys['arrowleft']) player.x -= player.speed;
             if (keys['d'] || keys['arrowright']) player.x += player.speed;
 
-            // IA Slender (persigue al vivo más cercano)
+            // IA Slender
             let target = null;
             let d1 = !player.dead ? Math.hypot(slender.x - player.x, slender.y - player.y) : Infinity;
             let d2 = (remotePlayer.active && !remotePlayer.dead) ? Math.hypot(slender.x - remotePlayer.x, slender.y - remotePlayer.y) : Infinity;
-            
-            if (d1 < d2) target = player;
-            else if (d2 !== Infinity) target = remotePlayer;
+            if (d1 < d2) target = player; else if (d2 !== Infinity) target = remotePlayer;
 
             if (target) {
                 let ang = Math.atan2(target.y - slender.y, target.x - slender.x);
-                slender.x += Math.cos(ang) * (slender.speed + (collectedPages * 0.25));
-                slender.y += Math.sin(ang) * (slender.speed + (collectedPages * 0.25));
+                slender.x += Math.cos(ang) * (slender.speed + (collectedPages * 0.2));
+                slender.y += Math.sin(ang) * (slender.speed + (collectedPages * 0.2));
             }
 
             // Notas
-            pages.forEach((p, index) => {
-                if(!p.collected && Math.hypot(player.x + 25 - p.x, player.y + 25 - p.y) < 40) {
+            pages.forEach((p, idx) => {
+                if(!p.collected && Math.hypot(player.x+25-p.x, player.y+25-p.y) < 40) {
                     p.collected = true;
-                    if(conn) conn.send({ type: 'COLLECT', index: index });
+                    if(conn) conn.send({ type: 'COLLECT', index: idx });
                     updateGlobalNotes();
                 }
             });
@@ -189,10 +214,9 @@
             // Muerte
             if (!player.dead && Math.hypot(player.x - slender.x, player.y - slender.y) < 40) {
                 player.dead = true;
-                player.angle = -Math.PI / 2; // -90 grados
+                player.angle = -Math.PI / 2;
             }
 
-            // Sync
             if (conn && conn.open) {
                 conn.send({ type: 'SYNC', x: player.x, y: player.y, dead: player.dead, angle: player.angle });
             }
@@ -201,25 +225,19 @@
         function updateGlobalNotes() {
             collectedPages = pages.filter(p => p.collected).length;
             document.getElementById('pageCount').innerText = collectedPages;
-            if(collectedPages >= 8) endGame();
+            if(collectedPages >= 8) {
+                document.getElementById('msg-overlay').innerText = "All pages have been collected";
+                document.getElementById('msg-overlay').style.display = "block";
+                setTimeout(() => location.reload(), 4000);
+            }
         }
 
-        function endGame() {
-            const overlay = document.getElementById('msg-overlay');
-            overlay.innerText = "All pages have been collected";
-            overlay.style.display = "block";
-            setTimeout(() => {
-                location.reload(); // Regresa al lobby/reinicio
-            }, 4000);
-        }
-
-        function drawPlayer(pX, pY, tintColor, angle) {
+        function drawPlayer(pX, pY, tint, ang) {
             ctx.save();
             ctx.translate(pX + 25, pY + 25);
-            ctx.rotate(angle);
-            // Dibujar imagen centrada
+            ctx.rotate(ang);
             ctx.drawImage(GameContentSlender.PersonSpriteheh, -25, -25, 50, 50);
-            ctx.fillStyle = tintColor;
+            ctx.fillStyle = tint;
             ctx.fillRect(-25, -25, 50, 50);
             ctx.restore();
         }
@@ -227,18 +245,13 @@
         function draw() {
             ctx.fillStyle = "#050505";
             ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-            // Notas
             ctx.fillStyle = "white";
             pages.forEach(p => { if(!p.collected) ctx.fillRect(p.x, p.y, 12, 18); });
-
-            // Slender
             ctx.fillStyle = "black";
             ctx.fillRect(slender.x, slender.y, slender.w, slender.h);
             ctx.fillStyle = "white";
             ctx.fillRect(slender.x + 5, slender.y - 15, slender.w - 10, 15);
 
-            // Jugadores
             drawPlayer(player.x, player.y, isHost ? player.color : remotePlayer.color, player.angle);
             if (remotePlayer.active) {
                 drawPlayer(remotePlayer.x, remotePlayer.y, isHost ? remotePlayer.color : player.color, remotePlayer.angle);
